@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Phonebook</title>
+    <style>
+      table,
+      th,
+      td {
+        border: 1px solid black;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 10px;
+      }
+      button {
+        margin-left: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Phonebook</h1>
+
+    <!-- Form for Adding New Contact -->
+    <h2>Add Contact</h2>
+    <form id="addContactForm">
+      <div>
+        <input type="text" name="name" placeholder="Name" required />
+        <input
+          type="text"
+          name="phoneNumber"
+          placeholder="Phone Number"
+          required
+        />
+      </div>
+      <button type="button" onclick="addField()">Add More Fields</button>
+      <button type="button" onclick="addContact()">Add Contact</button>
+    </form>
+
+    <!-- Search Form -->
+    <h2>Search Contacts</h2>
+    <form id="searchForm">
+      <input type="text" id="searchKey" placeholder="Search Field Name" />
+      <input type="text" id="searchValue" placeholder="Search Value" />
+      <button type="button" onclick="searchContacts()">Search</button>
+    </form>
+
+    <!-- Table for Displaying Contacts -->
+    <h2>Contacts</h2>
+    <table id="contactsTable">
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <button onclick="window.location.href='/logout'">Logout</button>
+    <!-- Modal for Updating Contact -->
+    <div
+      id="updateModal"
+      style="
+        display: none;
+        position: fixed;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+      "
+    >
+      <div
+        style="
+          background-color: white;
+          margin: 100px auto;
+          padding: 20px;
+          width: 300px;
+        "
+      >
+        <h2>Update Contact</h2>
+        <form id="updateForm" onsubmit="submitUpdate(event)">
+          <!-- Dynamic fields will be added here -->
+        </form>
+        <button onclick="closeModal()">Cancel</button>
+      </div>
+    </div>
+
+    <script>
+      fetch('/')
+        .catch((error) => {
+          window.location.href = '/login.html'; 
+        });
+    
+      function addField() {
+        const div = document.createElement("div");
+        const keyInput = document.createElement("input");
+        keyInput.type = "text";
+        keyInput.placeholder = "Field Name";
+        keyInput.required = true;
+        const valueInput = document.createElement("input");
+        valueInput.type = "text";
+        valueInput.placeholder = "Value";
+        valueInput.required = true;
+        div.appendChild(keyInput);
+        div.appendChild(valueInput);
+        const form = document.getElementById("addContactForm");
+        form.insertBefore(div, form.children[form.children.length - 2]);
+      }
+    
+      function addContact() {
+        const nameInput = document.querySelector('input[name="name"]');
+        const phoneInput = document.querySelector('input[name="phoneNumber"]');
+        if (!nameInput.value.trim() || !phoneInput.value.trim()) {
+          alert("Name and phone number are required.");
+          return;
+        }
+    
+        const body = {
+          name: nameInput.value.trim(),
+          phoneNumber: phoneInput.value.trim(),
+        };
+    
+        addDynamicFields(body);
+      }
+    
+      function addDynamicFields(body) {
+        const dynamicDivs = document.querySelectorAll("#addContactForm > div:not(:first-child)");
+        let isValid = true;
+    
+        dynamicDivs.forEach((div) => {
+          const keyInput = div.querySelector('input[type="text"]:first-child');
+          const valueInput = div.querySelector('input[type="text"]:nth-child(2)');
+          if (keyInput.value.trim() === "" || valueInput.value.trim() === "") {
+            alert("All fields must be filled out.");
+            isValid = false;
+            return;
+          }
+          if (body.hasOwnProperty(keyInput.value.trim())) {
+            alert("Duplicate field names are not allowed.");
+            isValid = false;
+            return;
+          }
+          body[keyInput.value.trim()] = valueInput.value.trim();
+        });
+    
+        if (isValid) {
+          submitContact(body);
+        }
+      }
+    
+      function submitContact(body) {
+        fetch("/register", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        })
+        .then((response) => response.json())
+        .then((data) => {
+          console.log(data);
+          alert("Contact added!");
+          document.getElementById("addContactForm").reset();
+          searchContacts(); // Refresh the list after adding a contact
+        })
+        .catch((error) => console.error("Error:", error));
+      }
+    
+      function searchContacts() {
+        const key = document.getElementById("searchKey").value;
+        const value = document.getElementById("searchValue").value;
+        const queryParams = `${key}=${encodeURIComponent(value)}`;
+    
+        fetch(`/search?${queryParams}`)
+          .then((response) => response.json())
+          .then((data) => {
+            const tableBody = document.getElementById("contactsTable").getElementsByTagName("tbody")[0];
+            tableBody.innerHTML = "";
+            data.forEach((contact) => {
+              const row = tableBody.insertRow();
+              let dataText = "";
+              for (let [key, value] of Object.entries(contact.data)) {
+                dataText += `${key.charAt(0).toUpperCase() + key.slice(1)}: ${value}<br>`; 
+              }
+              row.insertCell(0).innerHTML = dataText; 
+              const actionsCell = row.insertCell(1);
+              actionsCell.appendChild(createActionButton("Update", contact._id));
+              actionsCell.appendChild(createActionButton("Delete", contact._id));
+            });
+          })
+          .catch((error) => console.error("Error:", error));
+      }
+    
+      function createActionButton(text, id) {
+        const button = document.createElement("button");
+        button.textContent = text;
+        button.onclick = function () {
+          if (text === "Update") {
+            updateContact(id);
+          } else {
+            deleteContact(id);
+          }
+        };
+        return button;
+      }
+    
+      function updateContact(id) {
+        fetch(`/contacts/${id}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to fetch contact details.');
+                }
+                return response.json();
+            })
+            .then(contact => {
+                const updateForm = document.getElementById("updateForm");
+                updateForm.innerHTML = ""; 
+                Object.keys(contact.data).forEach(key => {
+                    const fieldHtml = `<label>${key}:</label><input type="text" name="${key}" value="${contact.data[key]}"><br>`;
+                    updateForm.innerHTML += fieldHtml;
+                });
+                updateForm.innerHTML += `<button type="button" onclick="submitUpdate('${id}')">Save Changes</button>`;
+                document.getElementById("updateModal").style.display = "block";
+            })
+            .catch(error => {
+                console.error("Error loading contact:", error);
+                alert("Failed to load contact data for updating.");
+            });
+      }
+
+    
+      function submitUpdate(id) {
+          event.preventDefault();
+          const formData = new FormData(document.getElementById("updateForm"));
+          const updatedData = { data: {} };
+          formData.forEach((value, key) => {
+              updatedData.data[key] = value;
+          });
+
+          fetch(`/contacts/${id}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(updatedData),
+          })
+          .then(response => response.json())
+          .then(data => {
+              alert("Contact updated successfully!");
+              closeModal();
+              searchContacts();  
+          })
+          .catch(error => {
+              console.error("Failed to update contact:", error);
+              alert("Failed to update contact.");
+          });
+      }
+
+    
+      function closeModal() {
+        document.getElementById("updateModal").style.display = "none";
+      }
+    
+      function deleteContact(id) {
+        if (confirm("Are you sure you want to delete this contact?")) {
+          fetch(`/contacts/${id}`, {
+            method: "DELETE",
+          })
+          .then((response) => {
+            if (response.ok) {
+              alert("Contact deleted successfully!");
+              searchContacts(); 
+            } else {
+              throw new Error("Delete failed");
+            }
+          })
+          .catch((error) => {
+            console.error("Error deleting contact:", error);
+            alert("Failed to delete contact.");
+          });
+        }
+      }
+    </script>
+    
+  </body>
+</html>
